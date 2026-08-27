@@ -1,0 +1,44 @@
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+env/
+venv/
+.venv/
+/build/
+develop-eggs/
+/dist/
+downloads/
+eggs/
+.eggs/
+/lib/
+/lib64/
+!.agents/lib/
+!.claude/hooks/lib/
+parts/
+sdist/
+var/
+wheels/
+*.egg-info/
+.installed.cfg
+*.egg
+
+# Testing & Coverage
+.pytest_cache/
+.coverage
+htmlcov/
+
+# Local security gate runtime state & logs (keep sample clean)
+.security-gate/findings-log.ndjson
+.codemender/
+.mantis_snapshots/
+.hook_stdout
+.hook_stderr
+.hook_exit
+/tmp/sample_uploads/
+
+# OS
+.DS_Store
+Thumbs.db
