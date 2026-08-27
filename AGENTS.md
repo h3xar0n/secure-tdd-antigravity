@@ -21,25 +21,33 @@ This framework unites functional engineering and security into a single test-fir
 
 ```
                  +-----------------------------------------+
-                 |               PLAN & RED                |
+                 |                 1. PLAN                 |
                  |  - Ingest CONTEXT.md                    |
-                 |  - Functional Specs & STRIDE Model      |
-                 |  - Functional + Security Tests (RED)    |
+                 |  - Functional Specs & Scoping           |
+                 |  - STRIDE Threat Model (threat_model.md)|
                  +--------------------+--------------------+
                                       |
                                       v
                  +-----------------------------------------+
-                 |                 GREEN                   |
+                 |                 2. RED                  |
+                 |  - Functional QA Tests (Happy Paths)    |
+                 |  - Edge Cases & Boundary Handling       |
+                 |  - Security Boundary Tests (Assert RED) |
+                 +--------------------+--------------------+
+                                      |
+                                      v
+                 +-----------------------------------------+
+                 |                3. GREEN                 |
                  |  - Clean, Functional & Defensive Code   |
                  |  - Satisfy Functional & Security Tests  |
                  +--------------------+--------------------+
                                       |
                                       v
                  +-----------------------------------------+
-                 |            REFACTOR & SECURE            |
+                 |          4. REFACTOR & EVOLVE           |
                  |  - Code Quality & Regression Tests      |
                  |  - Local Scans & Guided Review          |
-                 |  - Evolve Skills & Architectural Specs  |
+                 |  - Update CONTEXT.md & Evolve Skills    |
                  +--------------------+--------------------+
                                       |
                                       +--- Continuous Evolution ---+
