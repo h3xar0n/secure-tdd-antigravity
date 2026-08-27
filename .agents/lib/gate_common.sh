@@ -23,15 +23,27 @@ _gate_repo_root() {
 
 : "${SECURITY_GATE_LOG:=$(_gate_repo_root)/.security-gate/findings-log.ndjson}"
 
-# --- Antigravity hook envelope ---
+# --- Dual Platform Hook Envelopes (Antigravity & Claude Code) ---
+_is_claude_code() {
+  [ -n "${CLAUDE_PROJECT_DIR:-}" ] || [ -n "${CLAUDE_CONVERSATION_ID:-}" ] || [ "${AGENT_PLATFORM:-}" = "claude_code" ]
+}
+
 allow() {
-  echo '{"allow_tool": true}'
+  if _is_claude_code; then
+    echo '{"hookSpecificOutput": {"permissionDecision": "allow"}}'
+  else
+    echo '{"allow_tool": true}'
+  fi
   exit 0
 }
 
 deny() {
   local reason="$1"
-  jq -n --arg reason "$reason" '{allow_tool: false, reason: $reason}'
+  if _is_claude_code; then
+    jq -n --arg reason "$reason" '{"hookSpecificOutput": {"permissionDecision": "deny", "permissionDecisionReason": $reason}}'
+  else
+    jq -n --arg reason "$reason" '{"allow_tool": false, "reason": $reason}'
+  fi
   exit 0
 }
 

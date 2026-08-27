@@ -61,12 +61,27 @@ run_hook() {
 }
 
 decision() {
-  jq -r 'if .allow_tool == true then "allow" elif .allow_tool == false then "deny" else "MISSING" end' \
-    "$1/.hook_stdout" 2>/dev/null
+  jq -r '
+    if .hookSpecificOutput.permissionDecision != null then
+      .hookSpecificOutput.permissionDecision
+    elif .allow_tool == true then
+      "allow"
+    elif .allow_tool == false then
+      "deny"
+    else
+      "MISSING"
+    end
+  ' "$1/.hook_stdout" 2>/dev/null
 }
 
 reason() {
-  jq -r '.reason // ""' "$1/.hook_stdout" 2>/dev/null
+  jq -r '
+    if .hookSpecificOutput.permissionDecisionReason != null then
+      .hookSpecificOutput.permissionDecisionReason
+    else
+      .reason // ""
+    end
+  ' "$1/.hook_stdout" 2>/dev/null
 }
 
 log_events() {
