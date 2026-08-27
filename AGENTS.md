@@ -12,6 +12,7 @@ Traditionally, software teams treat **functional development** and **security te
 
 This framework unites functional engineering and security into a single test-first workflow:
 - **TDD for Features & Quality**: Features, enhancements, and bug fixes are developed using incremental, test-first cycles (RED -> GREEN -> REFACTOR).
+- **Security as Part of Quality**: Security is an inseparable aspect of software quality. When security patches are developed in isolation without functional tests, they risk breaking production behavior and introducing regressions. Co-verifying security and functionality guarantees stability.
 - **Security Added at Every Phase**: Architectural trust zones and threat models are considered during planning; security invariants (authentication, input allow-lists, safe sinks, least privilege) are codified into tests alongside functional acceptance criteria.
 - **Fast, Local Feedback**: Developers and AI agents catch functional bugs and security flaws locally before code is committed or pushed.
 
