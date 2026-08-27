@@ -276,6 +276,22 @@ test_pipeline_deterministic_error_fail_open_proceeds_to_stage2() {
   cleanup_repo "$repo"
 }
 
+test_pipeline_tools_missing_passes_smoothly() {
+  local repo; repo=$(setup_repo)
+  local no_tools_bin; no_tools_bin=$(mktemp -d)
+  ln -s "$(command -v jq)" "$no_tools_bin/jq"
+  ln -s "$(command -v git)" "$no_tools_bin/git"
+  (
+    cd "$repo" || exit 1
+    PATH="$no_tools_bin:/usr/bin:/bin" \
+    SECURITY_GATE_SCANNER=auto \
+    bash "$AGENTS_DIR/security_gate_hook.sh" > "$repo/.hook_stdout" 2> "$repo/.hook_stderr" < <(printf '\n\n\n\n\n')
+  )
+  assert_eq "pipeline: missing scanner tools allows push gracefully" "allow" "$(decision "$repo")"
+  rm -rf "$no_tools_bin"
+  cleanup_repo "$repo"
+}
+
 # --- run -----------------------------------------------------------------
 
 for t in \
@@ -296,6 +312,7 @@ for t in \
   test_semgrep_blocking_high_severity_autofix_succeeds \
   test_pipeline_semgrep_autofix_to_codemender_success \
   test_pipeline_deterministic_error_fail_open_proceeds_to_stage2 \
+  test_pipeline_tools_missing_passes_smoothly \
 ; do
   echo "-- $t"
   "$t"

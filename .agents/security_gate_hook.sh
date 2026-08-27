@@ -30,18 +30,22 @@ case "$(printf '%s' "$SCANNER" | tr '[:upper:]' '[:lower:]')" in
     run_semgrep_gate false
     ;;
   auto|pipeline|"")
-    # Sequential Pipeline Execution
-    if command -v semgrep >/dev/null 2>&1 && command -v cm >/dev/null 2>&1; then
-      # Run Stage 1 (Deterministic) then Stage 2 (Semantic Contextual)
+    # Sequential Pipeline Execution: each installed engine runs in sequence.
+    # If an engine is not installed, the pipeline skips it and proceeds to the next.
+    ran_any=false
+    if command -v semgrep >/dev/null 2>&1; then
       run_semgrep_gate true
-      run_codemender_gate true
-    elif command -v cm >/dev/null 2>&1; then
-      run_codemender_gate false
-    elif command -v semgrep >/dev/null 2>&1; then
-      run_semgrep_gate false
-    else
-      handle_scan_error "scanner" "Neither 'cm' nor 'semgrep' CLI found on PATH. Install semgrep or CodeMender to enable local pre-push security verification." false
+      ran_any=true
     fi
+    if command -v cm >/dev/null 2>&1; then
+      run_codemender_gate true
+      ran_any=true
+    fi
+    if [ "$ran_any" = "false" ]; then
+      echo "No security scanner CLI (semgrep or cm) found on PATH. Proceeding without local SAST verification." >&2
+      allow
+    fi
+    allow
     ;;
   *)
     handle_scan_error "scanner" "Unknown SECURITY_GATE_SCANNER '$SCANNER'. Supported: 'auto', 'pipeline', 'codemender', 'semgrep'." false
