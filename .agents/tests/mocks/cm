@@ -26,20 +26,6 @@ case "$1" in
     esac
     exit 0
     ;;
-  fix)
-    if [ "${MOCK_CM_FIX_EXIT:-0}" != "0" ]; then
-      exit "$MOCK_CM_FIX_EXIT"
-    fi
-    touch "$STATE_FILE"
-    if [ -n "$MOCK_FILE" ] && [ -f "$MOCK_FILE" ]; then
-      if [ "${MOCK_CM_FIX_LARGE:-false}" = "true" ]; then
-        for i in $(seq 1 100); do echo "# padding line $i" >> "$MOCK_FILE"; done
-      else
-        echo "# fixed" >> "$MOCK_FILE"
-      fi
-    fi
-    exit 0
-    ;;
   verify)
     if [ "${MOCK_CM_VERIFY_MODE:-}" = "error" ]; then
       echo "cm verify: crashed" >&2
