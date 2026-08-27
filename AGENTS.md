@@ -6,13 +6,13 @@ This document is the canonical reference guide for AI coding agents operating in
 
 ## 1. Paradigm: TDD with Integrated Security
 
-Test-Driven Development (TDD) is the foundation of high-quality software engineering: writing tests before implementation clarifies requirements, guarantees functional correctness, documents system behavior, and prevents regressions.
+Test-Driven Development (TDD) is the foundation of software quality: writing tests before implementation clarifies requirements, verifies functional correctness, documents system behavior, and catches regressions early.
 
 Traditionally, software teams treat **functional development** and **security testing** as disconnected workflows—features are written first, and security is bolted on later via delayed post-merge scans or third-party audits (leading to 20–70 day remediation cycles and high rework costs).
 
 This framework unites functional engineering and security into a single test-first workflow:
 - **TDD for Features & Quality**: Features, enhancements, and bug fixes are developed using incremental, test-first cycles (RED -> GREEN -> REFACTOR).
-- **Security as Part of Quality**: Security is an inseparable aspect of software quality. When security patches are developed in isolation without functional tests, they risk breaking production behavior and introducing regressions. Co-verifying security and functionality guarantees stability.
+- **Security as Part of Quality**: Security is an inseparable aspect of software quality. When security patches are developed in isolation without functional tests, they risk breaking production behavior and introducing regressions. Co-verifying security and functionality supports operational stability.
 - **Security Added at Every Phase**: Architectural trust zones and threat models are considered during planning; security invariants (authentication, input allow-lists, safe sinks, least privilege) are codified into tests alongside functional acceptance criteria.
 - **Fast, Local Feedback**: Developers and AI agents catch functional bugs and security flaws locally before code is committed or pushed.
 
@@ -87,7 +87,7 @@ This framework unites functional engineering and security into a single test-fir
 - Clean up code, eliminate duplication, improve maintainability, and verify 100% passing regression tests.
 - Execute fast deterministic scans locally (secrets, dependencies, Semgrep / CodeMender).
 - Conduct a guided AI review to verify business logic, edge cases, and eliminate design flaws.
-- Ensure diffs remain small, surgical, and preserve baseline stability.
+- Keep diffs small, surgical, and focused on preserving baseline stability.
 
 ### Continuous Evolution: Updating Skills & Context
 - **Skill**: `skill_evolution_updater`
@@ -99,5 +99,5 @@ This framework unites functional engineering and security into a single test-fir
 
 ## 3. Tool Conventions & State Management
 - **No Database Required**: All state is managed via plain Markdown (`CONTEXT.md`, `threat_model.md`) and append-only logs (`.security-gate/findings-log.ndjson`).
-- **Deterministic Pre-Push Gate**: On `git push`, the local hook intercepts the push to scan modified files, ensuring clean, tested code reaches remote repositories.
+- **Deterministic Pre-Push Gate**: On `git push`, the local hook intercepts the push to scan modified files so clean, tested code reaches remote repositories.
 
