@@ -1,6 +1,6 @@
-# Secure TDD for Antigravity (Jetski)
+# Secure TDD for Antigravity
 
-> **Antigravity workspace distribution of the Secure TDD framework.** Integrates Test-Driven Development (TDD) and QA with proactive security guardrails into Antigravity (Jetski) coding agents.
+> **Antigravity workspace distribution of the Secure TDD framework.** Integrates Test-Driven Development (TDD) and QA with proactive security guardrails into Antigravity coding agents.
 
 This repository is a downstream distribution generated from the canonical upstream repository:
 **[secure-tdd-agent-framework](https://github.com/example/secure-tdd-agent-framework)**.
