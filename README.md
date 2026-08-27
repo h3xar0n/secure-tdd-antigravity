@@ -2,6 +2,12 @@
 
 > **Secure Test-Driven Development (Secure TDD) agent skills, rules, and pre-push hooks for Antigravity AI coding agents.**
 
+> [!CAUTION]
+> **Use at Your Own Risk**: This repository is a demonstration of an approach and is not an officially supported product or framework. AI coding agents generate and execute code that may be unstable or perform unexpected actions. Run agentic workflows only in isolated development environments and never on systems with access to production credentials, sensitive customer data, or internal networks.
+
+> [!IMPORTANT]
+> **Responsible Use & Manual Verification**: AI models are non-deterministic and can generate incorrect patches or hallucinate findings. All automated code changes and findings must be manually reviewed and verified by a developer or security practitioner before deployment. Do not mass-file unverified, AI-generated reports to open-source maintainers. You are expected to inspect, adapt, and take full responsibility for using this code.
+
 This repository is the dedicated Antigravity distribution of the **[Secure TDD Agent Framework](https://github.com/h3xar0n/secure-tdd-agent-framework)**.
 
 ## What's Included
