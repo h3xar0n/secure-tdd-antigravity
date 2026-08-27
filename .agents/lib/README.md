@@ -64,11 +64,11 @@ The pre-push hook intercepts `git push` commands locally to verify code correctn
      │             │                Past 3rd Attempt)             <= 3 Attempts)
      ▼             ▼                       │                             │
 [ Deny Push  ] [ Tag Commit with           ▼                             ▼
-[& Escalate  ]   \x27unverified-scan\x27 ] [ Revert Changes ]            [ Auto-Commit ]
+[& Escalate  ]   'unverified-scan' ] [ Revert Changes ]            [ Auto-Commit ]
                [ Allow Push        ] [ git checkout . ]            [ Allow Push  ]
                                            │
                                            ▼
-                                  [ Run \x27cm verify\x27 ]
+                                  [ Run 'cm verify' ]
                                            │
                       ┌────────────────────┴────────────────────┐
              (Conclusively Not                     (Confirms Issue OR
@@ -119,7 +119,7 @@ The hook examines outgoing commits (`git diff --name-only origin/main` or `HEAD~
   - For CodeMender: Download `cm` CLI from Artifact Registry and run `cm init`.
 
 ### Issue 2: CodeMender Authentication Error
-- **Symptom**: `cm: authentication failed - run \x27gcloud auth application-default login\x27`.
+- **Symptom**: `cm: authentication failed - run 'gcloud auth application-default login'`.
 - **Explanation**: CodeMender requires Google Cloud Application Default Credentials.
 - **Remedy**:
   ```bash
