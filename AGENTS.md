@@ -6,7 +6,7 @@ This document is the canonical reference guide for AI coding agents operating in
 
 ## 1. Paradigm: TDD with Integrated Security
 
-Test-Driven Development (TDD) is the foundation of software quality: writing tests before implementation clarifies requirements, verifies functional correctness, documents system behavior, and catches regressions early.
+Test-Driven Development (TDD) involves writing tests before implementation clarifies requirements, verifies functional correctness, documents system behavior, and catches regressions early.
 
 Traditionally, software teams treat **functional development** and **security testing** as disconnected workflows—features are written first, and security is bolted on later via delayed post-merge scans or third-party audits (leading to 20–70 day remediation cycles and high rework costs).
 
