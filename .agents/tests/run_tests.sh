@@ -101,14 +101,14 @@ cleanup_repo() { rm -rf "$1"; }
 
 test_cm_pass_no_findings() {
   local repo; repo=$(setup_repo)
-  MOCK_CM_REPORT_MODE=clean run_hook "$AGENTS_DIR/security_gate_hook.sh" "$repo"
+  SECURITY_GATE_SCANNER=codemender MOCK_CM_REPORT_MODE=clean run_hook "$AGENTS_DIR/security_gate_hook.sh" "$repo"
   assert_eq "cm: clean scan allows" "allow" "$(decision "$repo")"
   cleanup_repo "$repo"
 }
 
 test_cm_error_blocks_by_default() {
   local repo; repo=$(setup_repo)
-  MOCK_CM_REPORT_MODE=error run_hook "$AGENTS_DIR/security_gate_hook.sh" "$repo"
+  SECURITY_GATE_SCANNER=codemender MOCK_CM_REPORT_MODE=error run_hook "$AGENTS_DIR/security_gate_hook.sh" "$repo"
   assert_eq "cm: scan error blocks by default" "deny" "$(decision "$repo")"
   assert_contains "cm: error reason mentions scan failure" "$(reason "$repo")" "failed to run"
   assert_contains "cm: error logged as ERROR" "$(log_events "$repo")" "ERROR"
@@ -117,7 +117,7 @@ test_cm_error_blocks_by_default() {
 
 test_cm_error_allow_on_error_true() {
   local repo; repo=$(setup_repo)
-  SECURITY_GATE_ALLOW_ON_ERROR=true MOCK_CM_REPORT_MODE=error \
+  SECURITY_GATE_SCANNER=codemender SECURITY_GATE_ALLOW_ON_ERROR=true MOCK_CM_REPORT_MODE=error \
     run_hook "$AGENTS_DIR/security_gate_hook.sh" "$repo"
   assert_eq "cm: scan error allows when opted in" "allow" "$(decision "$repo")"
   assert_contains "cm: error still logged even when allowed through" "$(log_events "$repo")" "ERROR"
@@ -126,7 +126,7 @@ test_cm_error_allow_on_error_true() {
 
 test_cm_advisory_low_severity_does_not_block() {
   local repo; repo=$(setup_repo)
-  MOCK_CM_REPORT_MODE=low run_hook "$AGENTS_DIR/security_gate_hook.sh" "$repo"
+  SECURITY_GATE_SCANNER=codemender MOCK_CM_REPORT_MODE=low run_hook "$AGENTS_DIR/security_gate_hook.sh" "$repo"
   assert_eq "cm: low-severity finding does not block" "allow" "$(decision "$repo")"
   assert_contains "cm: low-severity finding logged as ADVISORY" "$(log_events "$repo")" "ADVISORY"
   cleanup_repo "$repo"
@@ -134,7 +134,7 @@ test_cm_advisory_low_severity_does_not_block() {
 
 test_cm_blocking_high_severity_autofix_commits() {
   local repo; repo=$(setup_repo)
-  SECURITY_GATE_TEST_CMD=true MOCK_CM_REPORT_MODE=high \
+  SECURITY_GATE_SCANNER=codemender SECURITY_GATE_TEST_CMD=true MOCK_CM_REPORT_MODE=high \
     run_hook "$AGENTS_DIR/security_gate_hook.sh" "$repo"
   assert_eq "cm: high-severity finding auto-fixed allows" "allow" "$(decision "$repo")"
   assert_contains "cm: fix logged as FIXED" "$(log_events "$repo")" "FIXED"
@@ -146,7 +146,7 @@ test_cm_blocking_high_severity_autofix_commits() {
 
 test_cm_blocking_retries_exhausted_no_tty_fails_closed() {
   local repo; repo=$(setup_repo)
-  SECURITY_GATE_TEST_CMD=false MOCK_CM_REPORT_MODE=high \
+  SECURITY_GATE_SCANNER=codemender SECURITY_GATE_TEST_CMD=false MOCK_CM_REPORT_MODE=high \
     run_hook "$AGENTS_DIR/security_gate_hook.sh" "$repo"
   assert_eq "cm: unfixable finding + no tty denies" "deny" "$(decision "$repo")"
   assert_contains "cm: unresolved finding logged as BLOCKED" "$(log_events "$repo")" "BLOCKED"
@@ -155,7 +155,7 @@ test_cm_blocking_retries_exhausted_no_tty_fails_closed() {
 
 test_cm_large_fix_diff_escalates_not_autocommitted() {
   local repo; repo=$(setup_repo)
-  SECURITY_GATE_TEST_CMD=true MOCK_CM_REPORT_MODE=high MOCK_CM_FIX_LARGE=true \
+  SECURITY_GATE_SCANNER=codemender SECURITY_GATE_TEST_CMD=true MOCK_CM_REPORT_MODE=high MOCK_CM_FIX_LARGE=true \
   SECURITY_GATE_LARGE_FIX_LINES=10 \
     run_hook "$AGENTS_DIR/security_gate_hook.sh" "$repo"
   assert_eq "cm: oversized fix diff escalates + denies (no tty)" "deny" "$(decision "$repo")"
@@ -167,7 +167,7 @@ test_cm_large_fix_diff_escalates_not_autocommitted() {
 
 test_cm_mixed_severity_fixes_blocking_logs_advisory() {
   local repo; repo=$(setup_repo)
-  SECURITY_GATE_TEST_CMD=true MOCK_CM_REPORT_MODE=mixed \
+  SECURITY_GATE_SCANNER=codemender SECURITY_GATE_TEST_CMD=true MOCK_CM_REPORT_MODE=mixed \
     run_hook "$AGENTS_DIR/security_gate_hook.sh" "$repo"
   assert_eq "cm: mixed severities still allow after fix" "allow" "$(decision "$repo")"
   assert_contains "cm: mixed severities log FIXED" "$(log_events "$repo")" "FIXED"
@@ -177,14 +177,14 @@ test_cm_mixed_severity_fixes_blocking_logs_advisory() {
 
 test_semgrep_pass_no_findings() {
   local repo; repo=$(setup_repo)
-  MOCK_SEMGREP_MODE=clean run_hook "$AGENTS_DIR/security_gate_hook_semgrep.sh" "$repo"
+  SECURITY_GATE_SCANNER=semgrep MOCK_SEMGREP_MODE=clean run_hook "$AGENTS_DIR/security_gate_hook.sh" "$repo"
   assert_eq "semgrep: clean scan allows" "allow" "$(decision "$repo")"
   cleanup_repo "$repo"
 }
 
 test_semgrep_error_blocks_by_default() {
   local repo; repo=$(setup_repo)
-  MOCK_SEMGREP_MODE=error run_hook "$AGENTS_DIR/security_gate_hook_semgrep.sh" "$repo"
+  SECURITY_GATE_SCANNER=semgrep MOCK_SEMGREP_MODE=error run_hook "$AGENTS_DIR/security_gate_hook.sh" "$repo"
   assert_eq "semgrep: scan error blocks by default" "deny" "$(decision "$repo")"
   assert_contains "semgrep: error logged as ERROR" "$(log_events "$repo")" "ERROR"
   cleanup_repo "$repo"
@@ -192,15 +192,15 @@ test_semgrep_error_blocks_by_default() {
 
 test_semgrep_error_allow_on_error_true() {
   local repo; repo=$(setup_repo)
-  SECURITY_GATE_ALLOW_ON_ERROR=true MOCK_SEMGREP_MODE=error \
-    run_hook "$AGENTS_DIR/security_gate_hook_semgrep.sh" "$repo"
+  SECURITY_GATE_SCANNER=semgrep SECURITY_GATE_ALLOW_ON_ERROR=true MOCK_SEMGREP_MODE=error \
+    run_hook "$AGENTS_DIR/security_gate_hook.sh" "$repo"
   assert_eq "semgrep: scan error allows when opted in" "allow" "$(decision "$repo")"
   cleanup_repo "$repo"
 }
 
 test_semgrep_advisory_low_severity_does_not_block() {
   local repo; repo=$(setup_repo)
-  MOCK_SEMGREP_MODE=low run_hook "$AGENTS_DIR/security_gate_hook_semgrep.sh" "$repo"
+  SECURITY_GATE_SCANNER=semgrep MOCK_SEMGREP_MODE=low run_hook "$AGENTS_DIR/security_gate_hook.sh" "$repo"
   assert_eq "semgrep: INFO severity does not block" "allow" "$(decision "$repo")"
   assert_contains "semgrep: INFO severity logged as ADVISORY" "$(log_events "$repo")" "ADVISORY"
   cleanup_repo "$repo"
@@ -208,7 +208,7 @@ test_semgrep_advisory_low_severity_does_not_block() {
 
 test_semgrep_blocking_high_severity_denies() {
   local repo; repo=$(setup_repo)
-  MOCK_SEMGREP_MODE=high run_hook "$AGENTS_DIR/security_gate_hook_semgrep.sh" "$repo"
+  SECURITY_GATE_SCANNER=semgrep MOCK_SEMGREP_MODE=high run_hook "$AGENTS_DIR/security_gate_hook.sh" "$repo"
   assert_eq "semgrep: ERROR severity blocks" "deny" "$(decision "$repo")"
   assert_contains "semgrep: deny reason includes finding detail" "$(reason "$repo")" "Rule: x"
   cleanup_repo "$repo"
