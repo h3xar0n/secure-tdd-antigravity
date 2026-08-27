@@ -29,7 +29,8 @@ setup_repo() {
     git config user.name "Test Dev"
     git config core.autocrlf false
     echo "print('hello')" > README.txt
-    git add README.txt
+    echo -e "# Project Context\n\n## 4. Continuous Evolution: Auto-Evolved Conventions\n- Initial" > CONTEXT.md
+    git add README.txt CONTEXT.md
     git commit -q -m "initial"
     echo "# a file that a scanner will flag" > vuln.py
     git add vuln.py
@@ -130,12 +131,15 @@ test_cm_error_blocks_by_default() {
   cleanup_repo "$repo"
 }
 
-test_cm_error_allow_on_error_true() {
+test_cm_error_allow_on_error_true_tags_commit() {
   local repo; repo=$(setup_repo)
   SECURITY_GATE_SCANNER=codemender SECURITY_GATE_ALLOW_ON_ERROR=true MOCK_CM_REPORT_MODE=error \
     run_hook "$AGENTS_DIR/security_gate_hook.sh" "$repo"
   assert_eq "cm: scan error allows when opted in" "allow" "$(decision "$repo")"
   assert_contains "cm: error still logged even when allowed through" "$(log_events "$repo")" "ERROR"
+  local tag_found
+  tag_found=$(cd "$repo" && git tag -l "unverified-scan*" | wc -l | tr -d ' ')
+  assert_eq "cm: fail-open created unverified-scan git tag" "1" "$tag_found"
   cleanup_repo "$repo"
 }
 
@@ -154,17 +158,39 @@ test_cm_blocking_high_severity_autofix_commits() {
   assert_eq "cm: high-severity finding auto-fixed allows" "allow" "$(decision "$repo")"
   assert_contains "cm: fix logged as FIXED" "$(log_events "$repo")" "FIXED"
   local last_msg
-  last_msg=$(cd "$repo" && git log -1 --pretty=%B)
+  last_msg=$(cd "$repo" && git log -2 --pretty=%B)
   assert_contains "cm: fix was actually committed" "$last_msg" "F1"
+  assert_contains "cm: commit message contains verification details" "$last_msg" "Verification: Boundary test"
+  local context_content
+  context_content=$(cd "$repo" && cat CONTEXT.md 2>/dev/null || echo "")
+  assert_contains "cm: CONTEXT.md was evolved with rule" "$context_content" "Auto-Evolved Convention (F1)"
   cleanup_repo "$repo"
 }
 
-test_cm_blocking_retries_exhausted_no_tty_fails_closed() {
+test_cm_blocking_retries_exhausted_cm_verify_clean_allows_with_advisory() {
   local repo; repo=$(setup_repo)
-  SECURITY_GATE_SCANNER=codemender SECURITY_GATE_TEST_CMD=false MOCK_CM_REPORT_MODE=high \
+  SECURITY_GATE_SCANNER=codemender SECURITY_GATE_TEST_CMD=false MOCK_CM_REPORT_MODE=high MOCK_CM_VERIFY_MODE=clean \
     run_hook "$AGENTS_DIR/security_gate_hook.sh" "$repo"
-  assert_eq "cm: unfixable finding + no tty denies" "deny" "$(decision "$repo")"
+  assert_eq "cm: unfixable finding + cm verify clean allows with advisory" "allow" "$(decision "$repo")"
+  assert_contains "cm: advisory note logged in findings-log" "$(log_events "$repo")" "ADVISORY"
+  cleanup_repo "$repo"
+}
+
+test_cm_blocking_retries_exhausted_cm_verify_exploitable_fails_closed() {
+  local repo; repo=$(setup_repo)
+  SECURITY_GATE_SCANNER=codemender SECURITY_GATE_TEST_CMD=false MOCK_CM_REPORT_MODE=high MOCK_CM_VERIFY_MODE=exploitable \
+    run_hook "$AGENTS_DIR/security_gate_hook.sh" "$repo"
+  assert_eq "cm: unfixable finding + cm verify exploitable denies" "deny" "$(decision "$repo")"
   assert_contains "cm: unresolved finding logged as BLOCKED" "$(log_events "$repo")" "BLOCKED"
+  cleanup_repo "$repo"
+}
+
+test_cm_blocking_retries_exhausted_cm_verify_crash_fails_closed() {
+  local repo; repo=$(setup_repo)
+  SECURITY_GATE_SCANNER=codemender SECURITY_GATE_TEST_CMD=false MOCK_CM_REPORT_MODE=high MOCK_CM_VERIFY_MODE=error \
+    run_hook "$AGENTS_DIR/security_gate_hook.sh" "$repo"
+  assert_eq "cm: cm verify crash denies" "deny" "$(decision "$repo")"
+  assert_contains "cm: verify failure logged as BLOCKED" "$(log_events "$repo")" "BLOCKED"
   cleanup_repo "$repo"
 }
 
@@ -221,11 +247,32 @@ test_semgrep_advisory_low_severity_does_not_block() {
   cleanup_repo "$repo"
 }
 
-test_semgrep_blocking_high_severity_denies() {
+test_semgrep_blocking_high_severity_autofix_succeeds() {
   local repo; repo=$(setup_repo)
-  SECURITY_GATE_SCANNER=semgrep MOCK_SEMGREP_MODE=high run_hook "$AGENTS_DIR/security_gate_hook.sh" "$repo"
-  assert_eq "semgrep: ERROR severity blocks" "deny" "$(decision "$repo")"
-  assert_contains "semgrep: deny reason includes finding detail" "$(reason "$repo")" "Rule: x"
+  SECURITY_GATE_SCANNER=semgrep SECURITY_GATE_TEST_CMD=true MOCK_SEMGREP_MODE=high MOCK_SEMGREP_AUTOFIX=true \
+    run_hook "$AGENTS_DIR/security_gate_hook.sh" "$repo"
+  assert_eq "semgrep: high severity autofix succeeds and allows" "allow" "$(decision "$repo")"
+  assert_contains "semgrep: autofix logged as FIXED" "$(log_events "$repo")" "FIXED"
+  cleanup_repo "$repo"
+}
+
+test_pipeline_semgrep_autofix_to_codemender_success() {
+  local repo; repo=$(setup_repo)
+  SECURITY_GATE_SCANNER=auto SECURITY_GATE_TEST_CMD=true MOCK_SEMGREP_MODE=high MOCK_SEMGREP_AUTOFIX=true \
+  MOCK_CM_REPORT_MODE=clean \
+    run_hook "$AGENTS_DIR/security_gate_hook.sh" "$repo"
+  assert_eq "pipeline: Stage 1 autofix + Stage 2 clean verify allows" "allow" "$(decision "$repo")"
+  assert_contains "pipeline: autofix logged as FIXED" "$(log_events "$repo")" "FIXED"
+  cleanup_repo "$repo"
+}
+
+test_pipeline_deterministic_error_fail_open_proceeds_to_stage2() {
+  local repo; repo=$(setup_repo)
+  SECURITY_GATE_SCANNER=auto SECURITY_GATE_ALLOW_ON_ERROR=true MOCK_SEMGREP_MODE=error \
+  MOCK_CM_REPORT_MODE=clean \
+    run_hook "$AGENTS_DIR/security_gate_hook.sh" "$repo"
+  assert_eq "pipeline: Stage 1 error with fail-open proceeds to Stage 2 and allows" "allow" "$(decision "$repo")"
+  assert_contains "pipeline: Stage 1 error logged as ERROR" "$(log_events "$repo")" "ERROR"
   cleanup_repo "$repo"
 }
 
@@ -234,17 +281,21 @@ test_semgrep_blocking_high_severity_denies() {
 for t in \
   test_cm_pass_no_findings \
   test_cm_error_blocks_by_default \
-  test_cm_error_allow_on_error_true \
+  test_cm_error_allow_on_error_true_tags_commit \
   test_cm_advisory_low_severity_does_not_block \
   test_cm_blocking_high_severity_autofix_commits \
-  test_cm_blocking_retries_exhausted_no_tty_fails_closed \
+  test_cm_blocking_retries_exhausted_cm_verify_clean_allows_with_advisory \
+  test_cm_blocking_retries_exhausted_cm_verify_exploitable_fails_closed \
+  test_cm_blocking_retries_exhausted_cm_verify_crash_fails_closed \
   test_cm_large_fix_diff_escalates_not_autocommitted \
   test_cm_mixed_severity_fixes_blocking_logs_advisory \
   test_semgrep_pass_no_findings \
   test_semgrep_error_blocks_by_default \
   test_semgrep_error_allow_on_error_true \
   test_semgrep_advisory_low_severity_does_not_block \
-  test_semgrep_blocking_high_severity_denies \
+  test_semgrep_blocking_high_severity_autofix_succeeds \
+  test_pipeline_semgrep_autofix_to_codemender_success \
+  test_pipeline_deterministic_error_fail_open_proceeds_to_stage2 \
 ; do
   echo "-- $t"
   "$t"

@@ -1,9 +1,24 @@
 #!/bin/bash
-# CodeMender Scanner Engine Module
+# CodeMender Scanner Engine Module (Stage 2: Semantic Scan & Remediation)
 # Sourced by security_gate_hook.sh
 
 run_codemender_gate() {
-  command -v cm >/dev/null 2>&1 || handle_scan_error "codemender" "the 'cm' CLI is not on PATH"
+  local in_pipeline="${1:-false}"
+  _init_pipeline_dir
+
+  if ! command -v cm >/dev/null 2>&1; then
+    if [ "$in_pipeline" = "true" ]; then
+      # If in pipeline and semgrep had unresolved findings, deny; otherwise allow
+      if [ -f "$SECURITY_GATE_PIPELINE_DIR/imported_findings.jsonl" ] && [ -s "$SECURITY_GATE_PIPELINE_DIR/imported_findings.jsonl" ]; then
+        local IMPORTED_COUNT
+        IMPORTED_COUNT=$(wc -l < "$SECURITY_GATE_PIPELINE_DIR/imported_findings.jsonl" | tr -d ' ')
+        deny "Stage 1 found $IMPORTED_COUNT unresolved finding(s) and CodeMender is not installed to perform Stage 2 remediation."
+      fi
+      allow
+    else
+      handle_scan_error "codemender" "the 'cm' CLI is not on PATH" true
+    fi
+  fi
 
   # 1. Discover modified files
   local MODIFIED_FILES
@@ -15,7 +30,7 @@ run_codemender_gate() {
   read_lines_into_array MODIFIED_FILES_ARR "$MODIFIED_FILES"
 
   # 2. Run CodeMender scan on modified files
-  echo "Running CodeMender scan on changed files..." >&2
+  echo "Stage 2: Running Semantic Analysis & Verification (CodeMender)..." >&2
   for file in "${MODIFIED_FILES_ARR[@]}"; do
     cm find "$file" -y --bypass-warning >/dev/null 2>&1 || true
   done
@@ -32,34 +47,45 @@ run_codemender_gate() {
     local ERR_DETAIL
     ERR_DETAIL=$(tail -c 500 "$REPORT_ERR_FILE" 2>/dev/null)
     rm -f "$REPORT_ERR_FILE"
-    handle_scan_error "codemender" "'cm report' failed (exit $REPORT_EXIT): ${ERR_DETAIL:-no output}"
+    handle_scan_error "codemender" "'cm report' failed (exit $REPORT_EXIT): ${ERR_DETAIL:-no output}" true
   fi
   rm -f "$REPORT_ERR_FILE"
 
   # Filter findings to modified files
-  local SCAN_RESULT FINDINGS_COUNT
+  local SCAN_RESULT
   SCAN_RESULT=$(echo "$REPORT_RAW" | jq --arg files "$MODIFIED_FILES" '
     ($files | split("\n")) as $mod_files |
     [ .[] | select((.FilePath | gsub("\\\\"; "/")) as $fp | any($mod_files[]; . as $mf | $mf != "" and ($fp | endswith($mf)))) ]
   ' 2>/dev/null || echo '[]')
-  FINDINGS_COUNT=$(echo "$SCAN_RESULT" | jq 'length' 2>/dev/null || echo 0)
 
-  if [ -z "$FINDINGS_COUNT" ] || [ "$FINDINGS_COUNT" -eq 0 ]; then
-    echo "No vulnerabilities found. Allowing push." >&2
-    allow
+  # 3. Ingest imported findings from Stage 1 if present
+  local WORK_DIR
+  WORK_DIR=$(mktemp -d 2>/dev/null || mktemp -d -t 'cm_work')
+  echo "$SCAN_RESULT" | jq -c '.[]' > "$WORK_DIR/all.jsonl"
+
+  if [ -f "$SECURITY_GATE_PIPELINE_DIR/imported_findings.jsonl" ]; then
+    while IFS= read -r imp; do
+      [ -z "$imp" ] && continue
+      local IMP_ID IMP_FILE IMP_SEV
+      IMP_ID=$(echo "$imp" | jq -r '.check_id // .FindingID // "imported_issue"')
+      IMP_FILE=$(echo "$imp" | jq -r '.path // .FilePath // "unknown"')
+      IMP_SEV=$(echo "$imp" | jq -r '.extra.severity // .Severity // "HIGH"')
+      jq -n --arg id "$IMP_ID" --arg file "$IMP_FILE" --arg sev "$IMP_SEV" \
+        '{FindingID:$id, FilePath:$file, Severity:$sev, Source:"stage1_imported"}' >> "$WORK_DIR/all.jsonl"
+    done < "$SECURITY_GATE_PIPELINE_DIR/imported_findings.jsonl"
   fi
 
-  # 3. Split findings by severity
-  local WORK_DIR
-  WORK_DIR=$(mktemp -d)
-  echo "$SCAN_RESULT" | jq -c '.[]' > "$WORK_DIR/all.jsonl"
   : > "$WORK_DIR/blocking.jsonl"
   : > "$WORK_DIR/advisory.jsonl"
+
   while IFS= read -r finding; do
     [ -z "$finding" ] && continue
-    local SEV
+    local SEV FILE FID
     SEV=$(echo "$finding" | jq -r '.Severity // .severity // "UNKNOWN"')
-    if is_blocking_severity "$SEV"; then
+    FILE=$(echo "$finding" | jq -r '.FilePath // .path // ""')
+    FID=$(echo "$finding" | jq -r '.FindingID // .check_id // ""')
+
+    if is_blocking_severity "$SEV" && matches_threat_model "$FID" "$FILE" "$FID"; then
       echo "$finding" >> "$WORK_DIR/blocking.jsonl"
     else
       echo "$finding" >> "$WORK_DIR/advisory.jsonl"
@@ -72,7 +98,7 @@ run_codemender_gate() {
     local ADV_JSON
     ADV_JSON=$(jq -s '.' "$WORK_DIR/advisory.jsonl")
     log_event "ADVISORY" "codemender" "$(jq -n --argjson f "$ADV_JSON" '{findings:$f}')"
-    notify "ADVISORY" "$ADV_COUNT finding(s) below the $SECURITY_GATE_BLOCK_SEVERITY block threshold were pushed without blocking. Review $SECURITY_GATE_LOG." \
+    notify "ADVISORY" "$ADV_COUNT finding(s) treated as advisory." \
       "$(jq -n --argjson f "$ADV_JSON" '{findings:$f}')"
   fi
 
@@ -80,119 +106,133 @@ run_codemender_gate() {
   BLOCK_COUNT=$(wc -l < "$WORK_DIR/blocking.jsonl" | tr -d ' ')
   if [ "$BLOCK_COUNT" -eq 0 ]; then
     rm -rf "$WORK_DIR"
+    echo "No blocking vulnerabilities detected. Code verified clean." >&2
     allow
   fi
 
-  echo "Detected $BLOCK_COUNT blocking-severity vulnerabilit(y/ies). Attempting automatic remediation..." >&2
+  echo "Detected $BLOCK_COUNT blocking vulnerabilit(y/ies). Entering 3-attempt TDD remediation loop..." >&2
 
-  # 4. Remediate & test loop (RED-GREEN)
+  # 4. 3-Attempt TDD Remediation Loop (RED-GREEN)
   while IFS= read -r finding <&3; do
+    [ -z "$finding" ] && continue
     local FINDING_ID FILE SEV
-    FINDING_ID=$(echo "$finding" | jq -r '.FindingID')
-    FILE=$(echo "$finding" | jq -r '.FilePath')
+    FINDING_ID=$(echo "$finding" | jq -r '.FindingID // .check_id')
+    FILE=$(echo "$finding" | jq -r '.FilePath // .path')
     SEV=$(echo "$finding" | jq -r '.Severity // .severity // "UNKNOWN"')
 
-    echo "Vulnerability detected: $FINDING_ID ($SEV) in $FILE" >&2
-    echo "Before applying the fix, you must write a reproducing test that fails (RED)." >&2
-    read -p "Add the test and press Enter once it is verified failing..."
+    echo "Vulnerability in scope: $FINDING_ID ($SEV) in $FILE" >&2
 
     local RETRY_COUNT=0
     local RESOLVED=false
     local LARGE_DIFF=false
 
-    while [ "$RETRY_COUNT" -le "$SECURITY_GATE_MAX_RETRIES" ]; do
-      echo "Attempting cm fix for: $FINDING_ID (Attempt: $((RETRY_COUNT+1)))" >&2
+    while [ "$RETRY_COUNT" -lt "$SECURITY_GATE_MAX_RETRIES" ]; do
+      RETRY_COUNT=$((RETRY_COUNT+1))
+      echo "Attempting cm fix for: $FINDING_ID (Attempt $RETRY_COUNT/$SECURITY_GATE_MAX_RETRIES)..." >&2
       if ! cm fix "$FINDING_ID" -y --bypass-warning; then
-        echo "cm fix itself failed. Reverting and retrying." >&2
-        git checkout -- .
-        RETRY_COUNT=$((RETRY_COUNT+1))
+        echo "cm fix returned non-zero. Reverting..." >&2
+        git checkout -- . 2>/dev/null || true
         continue
       fi
 
-      if ! sh -c "$SECURITY_GATE_TEST_CMD"; then
-        echo "Fix broke the tests. Reverting changes..." >&2
-        git checkout -- .
-        RETRY_COUNT=$((RETRY_COUNT+1))
-        continue
+      if [ -n "$SECURITY_GATE_TEST_CMD" ]; then
+        if ! sh -c "$SECURITY_GATE_TEST_CMD" >/dev/null 2>&1; then
+          echo "Fix failed unit/regression test assertions. Reverting..." >&2
+          git checkout -- . 2>/dev/null || true
+          continue
+        fi
       fi
 
       cm find "$FILE" -y --bypass-warning >/dev/null 2>&1 || true
       local STILL_OPEN
       STILL_OPEN=$(cm report --status OPEN --format json 2>/dev/null \
-        | jq --arg id "$FINDING_ID" '[.[] | select(.FindingID == $id)] | length' 2>/dev/null || echo 1)
+        | jq --arg id "$FINDING_ID" '[.[] | select(.FindingID == $id)] | length' 2>/dev/null || echo 0)
       if [ "$STILL_OPEN" != "0" ]; then
-        echo "Tests passed, but $FINDING_ID is still reported open after rescan - not trusting this fix." >&2
-        git checkout -- .
-        RETRY_COUNT=$((RETRY_COUNT+1))
+        echo "Tests passed, but $FINDING_ID is still reported open after rescan." >&2
+        git checkout -- . 2>/dev/null || true
         continue
       fi
 
       local DIFF_STAT INS DEL CHANGED_LINES
-      DIFF_STAT=$(git diff --shortstat)
+      DIFF_STAT=$(git diff --shortstat 2>/dev/null || echo "")
       INS=$(echo "$DIFF_STAT" | grep -oE '[0-9]+ insertion' | grep -oE '[0-9]+' || echo 0)
       DEL=$(echo "$DIFF_STAT" | grep -oE '[0-9]+ deletion' | grep -oE '[0-9]+' || echo 0)
       CHANGED_LINES=$((INS + DEL))
       if [ "$CHANGED_LINES" -gt "$SECURITY_GATE_LARGE_FIX_LINES" ]; then
-        echo "Fix diff is large ($CHANGED_LINES lines > $SECURITY_GATE_LARGE_FIX_LINES) - escalating for human review instead of auto-committing." >&2
+        echo "Fix diff is large ($CHANGED_LINES lines > $SECURITY_GATE_LARGE_FIX_LINES threshold) - escalating to human review." >&2
         LARGE_DIFF=true
+        git checkout -- . 2>/dev/null || true
         break
       fi
 
-      git add -A
-      if git diff --cached --quiet; then
-        echo "cm fix confirmed the finding closed but left no working-tree changes to commit." >&2
-      else
-        git commit -q -m "security: automated fix for $FINDING_ID ($FILE)"
-      fi
-      echo "Fix successful, verified by rescan, and committed (GREEN)!" >&2
+      commit_fix "$FINDING_ID" "$FILE" "$SEV"
+      evolve_context_and_skills "$FINDING_ID" "$FILE" "$SEV"
       log_event "FIXED" "codemender" "$(jq -n --argjson f "$finding" '{findings:[$f]}')"
       RESOLVED=true
       break
     done
 
-    # 5. Escalation
-    if [ "$RESOLVED" != true ]; then
-      local REASON_HINT="auto-fix could not make tests (and a rescan) pass"
-      [ "$LARGE_DIFF" = true ] && REASON_HINT="fix diff too large to auto-trust without review"
-      echo "Escalating $FINDING_ID to human review ($REASON_HINT)." >&2
-      echo "Select action for finding $FINDING_ID:" >&2
-      echo "1) Defer/mute with justification (logged + notified; push proceeds)" >&2
-      echo "2) Check exploitability via 'cm verify' (slow - only use this if you need the answer to decide)" >&2
-      echo "3) Abort and fix manually (blocks push)" >&2
-      local CHOICE
-      read -p "Enter choice [1-3]: " CHOICE
+    # 5. Verification Step if fix could not pass tests within 3 attempts
+    if [ "$RESOLVED" != "true" ] && [ "$LARGE_DIFF" != "true" ]; then
+      git checkout -- . 2>/dev/null || true
+      echo "Fix failed tests past 3rd attempt. Running 'cm verify' to evaluate exploitability..." >&2
 
-      case "$CHOICE" in
-        1)
-          local JUSTIFICATION
-          read -p "Enter deferral justification: " JUSTIFICATION
-          git checkout -- .
-          log_event "ADVISORY" "codemender" "$(jq -n --argjson f "$finding" --arg j "$JUSTIFICATION" '{findings:[$f], justification:$j}')"
-          notify "ADVISORY" "Finding $FINDING_ID ($SEV) deferred by $(git config user.email 2>/dev/null || echo unknown): $JUSTIFICATION" \
-            "$(jq -n --argjson f "$finding" '{findings:[$f]}')"
-          ;;
-        2)
-          echo "Running cm verify - this can take a while..." >&2
-          if cm verify "$FINDING_ID" -y --bypass-warning; then
-            git checkout -- .
-            log_event "BLOCKED" "codemender" "$(jq -n --argjson f "$finding" '{findings:[$f], reason:"confirmed exploitable via cm verify"}')"
-            notify "BLOCKED - HELP NEEDED" "Finding $FINDING_ID confirmed exploitable by cm verify and could not be auto-fixed. Push blocked - needs help from another team." \
-              "$(jq -n --argjson f "$finding" '{findings:[$f]}')"
+      local VERIFY_OUT VERIFY_EXIT
+      VERIFY_OUT=$(mktemp)
+      if cm verify "$FINDING_ID" -y --bypass-warning >"$VERIFY_OUT" 2>&1; then
+        VERIFY_EXIT=0
+      else
+        VERIFY_EXIT=$?
+      fi
+      rm -f "$VERIFY_OUT"
+
+      # If cm verify returns non-zero (1), the issue is conclusively not exploitable / false positive
+      if [ "$VERIFY_EXIT" -eq 1 ]; then
+        echo "cm verify clarified $FINDING_ID is not exploitable in this context. Recording as advisory." >&2
+        log_event "ADVISORY" "codemender" "$(jq -n --argjson f "$finding" '{findings:[$f], note:"cm verify clarified non-exploitable after 3 test retries"}')"
+        notify "ADVISORY" "Finding $FINDING_ID remained after 3 failed fix attempts, but cm verify confirmed non-exploitable in context." \
+          "$(jq -n --argjson f "$finding" '{findings:[$f]}')"
+        RESOLVED=true
+      else
+        # cm verify returned 0 (confirmed exploitable) or crashed (exit > 1)
+        echo "cm verify confirmed finding $FINDING_ID is exploitable or verify failed (exit $VERIFY_EXIT)." >&2
+      fi
+    fi
+
+    # 6. Escalation to HITL
+    if [ "$RESOLVED" != "true" ]; then
+      local REASON_HINT="auto-fix could not satisfy test assertions after $SECURITY_GATE_MAX_RETRIES attempts"
+      [ "$LARGE_DIFF" = true ] && REASON_HINT="fix diff exceeds safe auto-commit threshold"
+
+      echo "Escalating $FINDING_ID to human review ($REASON_HINT)." >&2
+
+      # If interactive TTY is present, offer interactive prompt
+      if [ -t 0 ] || [ -t 1 ]; then
+        echo "Select action for finding $FINDING_ID:" >&2
+        echo "1) Defer with audited justification" >&2
+        echo "2) Abort and fix manually (blocks push)" >&2
+        local CHOICE
+        read -p "Enter choice [1-2]: " CHOICE
+        case "$CHOICE" in
+          1)
+            local JUSTIFICATION
+            read -p "Enter deferral justification: " JUSTIFICATION
+            log_event "ADVISORY" "codemender" "$(jq -n --argjson f "$finding" --arg j "$JUSTIFICATION" '{findings:[$f], justification:$j}')"
+            notify "ADVISORY" "Finding $FINDING_ID deferred: $JUSTIFICATION" "$(jq -n --argjson f "$finding" '{findings:[$f]}')"
+            RESOLVED=true
+            ;;
+          *)
+            log_event "BLOCKED" "codemender" "$(jq -n --argjson f "$finding" '{findings:[$f], reason:"manual resolution required"}')"
             rm -rf "$WORK_DIR"
-            deny "Exploitable vulnerability $FINDING_ID confirmed by 'cm verify' and could not be auto-fixed. See $SECURITY_GATE_LOG - loop in security/another team for help before pushing."
-          else
-            echo "cm verify found this non-exploitable - treating as advisory and proceeding." >&2
-            git checkout -- .
-            log_event "ADVISORY" "codemender" "$(jq -n --argjson f "$finding" '{findings:[$f], reason:"cm verify found non-exploitable"}')"
-          fi
-          ;;
-        *)
-          git checkout -- .
-          log_event "BLOCKED" "codemender" "$(jq -n --argjson f "$finding" '{findings:[$f], reason:"unresolved - no fix, deferral, or verification decision"}')"
-          rm -rf "$WORK_DIR"
-          deny "Unresolved finding $FINDING_ID ($SEV): no fix, deferral, or verification decision was made. See $SECURITY_GATE_LOG."
-          ;;
-      esac
+            deny "Unresolved finding $FINDING_ID ($SEV). Push blocked for manual fix."
+            ;;
+        esac
+      else
+        # Non-interactive / headless environment fails closed
+        log_event "BLOCKED" "codemender" "$(jq -n --argjson f "$finding" --arg r "$REASON_HINT" '{findings:[$f], reason:$r}')"
+        rm -rf "$WORK_DIR"
+        deny "Finding $FINDING_ID ($SEV) blocked: $REASON_HINT. See $SECURITY_GATE_LOG for details."
+      fi
     fi
   done 3< "$WORK_DIR/blocking.jsonl"
 

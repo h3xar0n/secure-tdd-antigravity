@@ -41,7 +41,15 @@ case "$1" in
     exit 0
     ;;
   verify)
-    # exit 0 = confirmed exploitable (matches original script's `if cm verify; then ... exploitable`)
+    if [ "${MOCK_CM_VERIFY_MODE:-}" = "error" ]; then
+      echo "cm verify: crashed" >&2
+      exit 2
+    elif [ "${MOCK_CM_VERIFY_MODE:-}" = "exploitable" ]; then
+      exit 0
+    elif [ "${MOCK_CM_VERIFY_MODE:-}" = "clean" ]; then
+      exit 1
+    fi
+    # default fallback to MOCK_CM_VERIFY_EXIT (1 = not exploitable)
     exit "${MOCK_CM_VERIFY_EXIT:-1}"
     ;;
   *)

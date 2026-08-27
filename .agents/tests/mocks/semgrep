@@ -1,12 +1,33 @@
 #!/bin/bash
-# Mock `semgrep` CLI for security_gate_hook_semgrep.sh tests.
+# Mock `semgrep` CLI for security_gate_hook tests.
 # Behavior controlled by MOCK_SEMGREP_* env vars (see run_tests.sh).
+STATE_FILE="${MOCK_STATE_DIR:-/tmp}/semgrep_fixed_marker"
 
 if [ "$1" = "scan" ]; then
   if [ "${MOCK_SEMGREP_MODE:-clean}" = "error" ]; then
     echo "semgrep: fatal error: could not load rules" >&2
     exit 2
   fi
+
+  # Check if autofix was requested
+  for arg in "$@"; do
+    if [ "$arg" = "--autofix" ]; then
+      if [ "${MOCK_SEMGREP_AUTOFIX:-true}" = "true" ]; then
+        touch "$STATE_FILE"
+        if [ -n "$MOCK_FILE" ] && [ -f "$MOCK_FILE" ]; then
+          echo "# fixed by semgrep autofix" >> "$MOCK_FILE"
+        fi
+      fi
+      exit 0
+    fi
+  done
+
+  # If already fixed, return clean
+  if [ -f "$STATE_FILE" ]; then
+    echo '{"results":[]}'
+    exit 0
+  fi
+
   case "${MOCK_SEMGREP_MODE:-clean}" in
     clean) echo '{"results":[]}' ;;
     high)  echo "{\"results\":[{\"path\":\"${MOCK_FILE:-vuln.py}\",\"start\":{\"line\":1},\"check_id\":\"x\",\"extra\":{\"message\":\"m\",\"severity\":\"ERROR\"}}]}" ;;
