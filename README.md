@@ -1,40 +1,30 @@
 # Secure TDD for Antigravity
 
-> **Antigravity workspace distribution of the Secure TDD framework.** Integrates Test-Driven Development (TDD) and QA with proactive security guardrails into Antigravity coding agents.
+> **Secure Test-Driven Development (Secure TDD) agent skills, rules, and pre-push hooks for Antigravity AI coding agents.**
 
-This repository is a downstream distribution generated from the canonical upstream repository:
-**[secure-tdd-agent-framework](https://github.com/example/secure-tdd-agent-framework)**.
-
----
+This repository is the dedicated Antigravity distribution of the **[Secure TDD Agent Framework](https://github.com/h3xar0n/secure-tdd-agent-framework)**.
 
 ## What's Included
 
-- **`.agents/rules/secure_tdd_workflow.md`**: Always-on 4-phase Secure TDD inner loop (Plan -> Red -> Green -> Refactor & Evolve).
-- **`.agents/skills/`**: Modular Antigravity skills:
-  - `threat_model_assessor`: Scopes features and maps STRIDE boundaries in `threat_model.md`.
-  - `security_test_writer`: Writes failing functional QA & security boundary tests (RED).
-  - `defensive_developer`: Implements clean production code and defensive patterns (GREEN).
-  - `local_refactor_scanner`: Cleans code, runs regression tests, and executes local SAST scans (REFACTOR).
-  - `skill_evolution_updater`: Captures systemic lessons into `CONTEXT.md` and `SKILL.md`.
-  - `history_context_seeder`: Seeds context from VCS commit history on onboarding.
-- **`.agents/hooks.json` & `.agents/security_gate_hook.sh`**: Deterministic `git push` security gate interceptors (CodeMender & Semgrep).
-- **`AGENTS.md` & `CONTEXT.md`**: Agent reference guidelines and architectural boundaries.
+- `.agents/rules/secure_tdd_workflow.md`: Always-on 4-phase workflow rule (`PLAN` -> `RED` -> `GREEN` -> `REFACTOR`).
+- `.agents/skills/`: Specialized agent skills for threat modeling, security test writing, defensive coding, local refactor scanning, and skill evolution.
+- `.agents/hooks.json` & `.agents/security_gate_hook.sh`: Local pre-push hook enforcing test-first verification before code reaches remote repositories.
+- `CONTEXT.md`: Living repository context, trust boundaries, and approved helpers.
+- `AGENTS.md`: Universal agent reference guide.
 
----
+## Getting Started
 
-## Quickstart
-
-1. Clone or copy `.agents/`, `AGENTS.md`, and `CONTEXT.md` into your project root.
-2. Ensure `semgrep` or `cm` is installed on your `PATH`:
-   ```bash
-   pip install semgrep
-   ```
-3. Run the offline hook test suite to verify:
+1. Open this repository or copy `.agents/`, `AGENTS.md`, and `CONTEXT.md` into your Antigravity project root.
+2. The agent automatically discovers the workflow rules and skills.
+3. Test the local pre-push hook:
    ```bash
    bash .agents/tests/run_tests.sh
    ```
 
----
+## Upstream Canonical Framework
+
+All skills, rules, and threat models are maintained in the canonical upstream repository:  
+🔗 **[h3xar0n/secure-tdd-agent-framework](https://github.com/h3xar0n/secure-tdd-agent-framework)**
 
 ## License
 
