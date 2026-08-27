@@ -39,6 +39,10 @@ htmlcov/
 .hook_exit
 /tmp/sample_uploads/
 
+# Local workspaces / subfolder distributions
+antigravity/
+claude-code/
+
 # OS
 .DS_Store
 Thumbs.db
