@@ -94,7 +94,22 @@ matches_threat_model() {
   return 1
 }
 
-# --- Audit Logging & Notification ---
+# --- Audit Logging, Attempt Tracking & Notification ---
+get_finding_attempt_count() {
+  local fid="$1" file="$2"
+  if [ ! -s "$SECURITY_GATE_LOG" ]; then
+    echo 0
+    return
+  fi
+  local res
+  res=$(jq -s --arg fid "$fid" --arg file "$file" '
+    [ .[] | select((.finding_id == $fid or .FindingID == $fid) and (.file == $file or .FilePath == $file)) ] as $history |
+    ($history | map(select(.event == "FIXED")) | last | .ts // "") as $last_fix_ts |
+    ($history | map(select((.event == "DENIED_TO_AGENT" or .event == "BLOCKED") and (.ts > $last_fix_ts))) | length)
+  ' "$SECURITY_GATE_LOG" 2>/dev/null)
+  echo "${res:-0}"
+}
+
 log_event() {
   local event="$1" tool="$2" extra="$3"
   [ -z "$extra" ] && extra="{}"

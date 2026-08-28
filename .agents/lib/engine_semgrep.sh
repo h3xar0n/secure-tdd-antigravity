@@ -101,10 +101,17 @@ run_semgrep_gate() {
     [ "$in_pipeline" = "true" ] && return 0 || allow
   fi
 
-  echo "Detected $BLOCK_COUNT in-scope deterministic finding(s). Attempting 3-attempt TDD autofix..." >&2
+  if [ "$in_pipeline" = "true" ]; then
+    echo "Detected $BLOCK_COUNT in-scope deterministic finding(s). Exporting to Stage 2 for contextual evaluation..." >&2
+    cat "$WORK_DIR/blocking.jsonl" >> "$SECURITY_GATE_PIPELINE_DIR/imported_findings.jsonl"
+    rm -rf "$WORK_DIR"
+    return 0
+  fi
 
-  # 3. 3-Attempt TDD Autofix Loop
-  local UNRESOLVED_COUNT=0
+  # Standalone Semgrep mode: Evaluate attempt budget per finding and prompt agent
+  local ACTIONABLE_COUNT=0
+  local ACTIONABLE_SUMMARY=""
+
   while IFS= read -r finding; do
     [ -z "$finding" ] && continue
     local FILE CHECK_ID SEV DESC
@@ -113,58 +120,32 @@ run_semgrep_gate() {
     SEV=$(echo "$finding" | jq -r '.extra.severity // "UNKNOWN"')
     DESC=$(echo "$finding" | jq -r '.extra.message // ""')
 
-    local RETRY=0
-    local RESOLVED=false
+    local PREV_ATTEMPTS
+    PREV_ATTEMPTS=$(get_finding_attempt_count "$CHECK_ID" "$FILE")
+    local CURRENT_ATTEMPT=$((PREV_ATTEMPTS + 1))
 
-    while [ "$RETRY" -lt "$SECURITY_GATE_MAX_RETRIES" ]; do
-      RETRY=$((RETRY+1))
-      echo "Applying deterministic autofix for $CHECK_ID in $FILE (Attempt $RETRY)..." >&2
-
-      # Attempt autofix with semgrep
-      semgrep scan --autofix --config auto "$FILE" >/dev/null 2>&1 || true
-
-      if [ -n "$SECURITY_GATE_TEST_CMD" ]; then
-        if ! sh -c "$SECURITY_GATE_TEST_CMD" >/dev/null 2>&1; then
-          echo "Autofix broke regression tests on attempt $RETRY. Reverting..." >&2
-          git checkout -- . 2>/dev/null || true
-          continue
-        fi
-      fi
-
-      # Check if semgrep confirms finding resolved
-      local RESCAN_COUNT
-      RESCAN_COUNT=$(semgrep scan --config auto --json "$FILE" 2>/dev/null | jq --arg cid "$CHECK_ID" '[.results[] | select(.check_id == $cid)] | length' 2>/dev/null || echo 0)
-      if [ "$RESCAN_COUNT" -eq 0 ]; then
-        commit_fix "$CHECK_ID" "$FILE" "$DESC"
-        log_event "FIXED" "semgrep" "$(jq -n --argjson f "$finding" '{findings:[$f]}')"
-        evolve_context_and_skills "$CHECK_ID" "$FILE" "$DESC"
-        echo "$finding" >> "$SECURITY_GATE_PIPELINE_DIR/imported_fixes.jsonl"
-        RESOLVED=true
-        break
-      else
-        git checkout -- . 2>/dev/null || true
-      fi
-    done
-
-    if [ "$RESOLVED" != "true" ]; then
-      echo "Deterministic autofix for $CHECK_ID could not satisfy tests after $SECURITY_GATE_MAX_RETRIES attempts." >&2
-      git checkout -- . 2>/dev/null || true
-      echo "$finding" >> "$SECURITY_GATE_PIPELINE_DIR/imported_findings.jsonl"
-      UNRESOLVED_COUNT=$((UNRESOLVED_COUNT+1))
+    if [ "$CURRENT_ATTEMPT" -gt "$SECURITY_GATE_MAX_RETRIES" ]; then
+      log_event "BLOCKED" "semgrep" "$(jq -n --arg cid "$CHECK_ID" --arg f "$FILE" '{finding_id:$cid, file:$f, reason:"max_attempts_exhausted"}')"
+      rm -rf "$WORK_DIR"
+      deny "Finding $CHECK_ID ($SEV) in $FILE remained unresolved after $SECURITY_GATE_MAX_RETRIES attempts. Manual security review required. See $SECURITY_GATE_LOG."
     fi
+
+    log_event "DENIED_TO_AGENT" "semgrep" "$(jq -n --arg cid "$CHECK_ID" --arg f "$FILE" --arg sev "$SEV" --argjson a "$CURRENT_ATTEMPT" '{finding_id:$cid, file:$f, severity:$sev, attempt:$a}')"
+    ACTIONABLE_COUNT=$((ACTIONABLE_COUNT + 1))
+    ACTIONABLE_SUMMARY+=$'\n'"- [$CHECK_ID] ($SEV) in $FILE (Attempt $CURRENT_ATTEMPT/$SECURITY_GATE_MAX_RETRIES): $DESC"
   done < "$WORK_DIR/blocking.jsonl"
 
   rm -rf "$WORK_DIR"
 
-  if [ "$in_pipeline" = "true" ]; then
-    # In pipeline mode, unresolved findings pass to Stage 2
-    return 0
-  fi
+  local REJECTION_PROMPT="Security Gate blocked push ($ACTIONABLE_COUNT unresolved deterministic finding(s)).
 
-  if [ "$UNRESOLVED_COUNT" -gt 0 ]; then
-    log_event "BLOCKED" "semgrep" "{}"
-    deny "Semgrep detected $UNRESOLVED_COUNT unresolved security issue(s). Fix and verify before pushing."
-  fi
+Action Required: Execute the Secure TDD Loop:
+1. Invoke 'security_test_writer' to author a failing boundary test in tests/ (assert RED).
+2. Invoke 'defensive_developer' to apply defensive implementation (assert GREEN).
+3. Run the regression test suite ($SECURITY_GATE_TEST_CMD) to confirm all tests pass.
+4. Retry 'git push'.
 
-  allow
+Open Findings:${ACTIONABLE_SUMMARY}"
+
+  deny "$REJECTION_PROMPT"
 }

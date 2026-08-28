@@ -151,16 +151,27 @@ test_cm_advisory_low_severity_does_not_block() {
   cleanup_repo "$repo"
 }
 
-test_cm_blocking_high_severity_autofix_commits() {
+test_cm_blocking_high_severity_denies_and_prompts_agent() {
   local repo; repo=$(setup_repo)
-  SECURITY_GATE_SCANNER=codemender SECURITY_GATE_TEST_CMD=true MOCK_CM_REPORT_MODE=high \
+  SECURITY_GATE_SCANNER=codemender MOCK_CM_REPORT_MODE=high \
     run_hook "$AGENTS_DIR/security_gate_hook.sh" "$repo"
-  assert_eq "cm: high-severity finding auto-fixed allows" "allow" "$(decision "$repo")"
-  assert_contains "cm: fix logged as FIXED" "$(log_events "$repo")" "FIXED"
-  local last_msg
-  last_msg=$(cd "$repo" && git log -2 --pretty=%B)
-  assert_contains "cm: fix was actually committed" "$last_msg" "F1"
-  assert_contains "cm: commit message contains verification details" "$last_msg" "Verification: Boundary test"
+  assert_eq "cm: high-severity finding blocks push and prompts agent" "deny" "$(decision "$repo")"
+  assert_contains "cm: attempt 1 logged as DENIED_TO_AGENT" "$(log_events "$repo")" "DENIED_TO_AGENT"
+  cleanup_repo "$repo"
+}
+
+test_cm_agent_resolves_finding_subsequent_push_allows() {
+  local repo; repo=$(setup_repo)
+  # Turn 1: Agent tries push with vulnerability -> blocked
+  SECURITY_GATE_SCANNER=codemender MOCK_CM_REPORT_MODE=high \
+    run_hook "$AGENTS_DIR/security_gate_hook.sh" "$repo"
+  assert_eq "cm: turn 1 denies" "deny" "$(decision "$repo")"
+
+  # Turn 2: Agent executes TDD fix -> rescan clean -> allowed
+  SECURITY_GATE_SCANNER=codemender MOCK_CM_REPORT_MODE=clean \
+    run_hook "$AGENTS_DIR/security_gate_hook.sh" "$repo"
+  assert_eq "cm: turn 2 after TDD fix allows" "allow" "$(decision "$repo")"
+  assert_contains "cm: resolved finding logged as FIXED" "$(log_events "$repo")" "FIXED"
   local context_content
   context_content=$(cd "$repo" && cat CONTEXT.md 2>/dev/null || echo "")
   assert_contains "cm: CONTEXT.md was evolved with rule" "$context_content" "Auto-Evolved Convention (F1)"
@@ -169,7 +180,13 @@ test_cm_blocking_high_severity_autofix_commits() {
 
 test_cm_blocking_retries_exhausted_cm_verify_clean_allows_with_advisory() {
   local repo; repo=$(setup_repo)
-  SECURITY_GATE_SCANNER=codemender SECURITY_GATE_TEST_CMD=false MOCK_CM_REPORT_MODE=high MOCK_CM_VERIFY_MODE=clean \
+  # Turns 1, 2, 3: 3 failed attempts
+  for _ in 1 2 3; do
+    SECURITY_GATE_SCANNER=codemender MOCK_CM_REPORT_MODE=high \
+      run_hook "$AGENTS_DIR/security_gate_hook.sh" "$repo"
+  done
+  # Turn 4: Budget exhausted (> 3 attempts). cm verify clean (exit 1) -> allows with advisory
+  SECURITY_GATE_SCANNER=codemender MOCK_CM_REPORT_MODE=high MOCK_CM_VERIFY_MODE=clean \
     run_hook "$AGENTS_DIR/security_gate_hook.sh" "$repo"
   assert_eq "cm: unfixable finding + cm verify clean allows with advisory" "allow" "$(decision "$repo")"
   assert_contains "cm: advisory note logged in findings-log" "$(log_events "$repo")" "ADVISORY"
@@ -178,7 +195,12 @@ test_cm_blocking_retries_exhausted_cm_verify_clean_allows_with_advisory() {
 
 test_cm_blocking_retries_exhausted_cm_verify_exploitable_fails_closed() {
   local repo; repo=$(setup_repo)
-  SECURITY_GATE_SCANNER=codemender SECURITY_GATE_TEST_CMD=false MOCK_CM_REPORT_MODE=high MOCK_CM_VERIFY_MODE=exploitable \
+  for _ in 1 2 3; do
+    SECURITY_GATE_SCANNER=codemender MOCK_CM_REPORT_MODE=high \
+      run_hook "$AGENTS_DIR/security_gate_hook.sh" "$repo"
+  done
+  # Turn 4: cm verify confirms exploitable (exit 0) -> permanent deny
+  SECURITY_GATE_SCANNER=codemender MOCK_CM_REPORT_MODE=high MOCK_CM_VERIFY_MODE=exploitable \
     run_hook "$AGENTS_DIR/security_gate_hook.sh" "$repo"
   assert_eq "cm: unfixable finding + cm verify exploitable denies" "deny" "$(decision "$repo")"
   assert_contains "cm: unresolved finding logged as BLOCKED" "$(log_events "$repo")" "BLOCKED"
@@ -187,32 +209,31 @@ test_cm_blocking_retries_exhausted_cm_verify_exploitable_fails_closed() {
 
 test_cm_blocking_retries_exhausted_cm_verify_crash_fails_closed() {
   local repo; repo=$(setup_repo)
-  SECURITY_GATE_SCANNER=codemender SECURITY_GATE_TEST_CMD=false MOCK_CM_REPORT_MODE=high MOCK_CM_VERIFY_MODE=error \
+  for _ in 1 2 3; do
+    SECURITY_GATE_SCANNER=codemender MOCK_CM_REPORT_MODE=high \
+      run_hook "$AGENTS_DIR/security_gate_hook.sh" "$repo"
+  done
+  # Turn 4: cm verify crash (exit 2) -> denies
+  SECURITY_GATE_SCANNER=codemender MOCK_CM_REPORT_MODE=high MOCK_CM_VERIFY_MODE=error \
     run_hook "$AGENTS_DIR/security_gate_hook.sh" "$repo"
   assert_eq "cm: cm verify crash denies" "deny" "$(decision "$repo")"
   assert_contains "cm: verify failure logged as BLOCKED" "$(log_events "$repo")" "BLOCKED"
   cleanup_repo "$repo"
 }
 
-test_cm_large_fix_diff_escalates_not_autocommitted() {
-  local repo; repo=$(setup_repo)
-  SECURITY_GATE_SCANNER=codemender SECURITY_GATE_TEST_CMD=true MOCK_CM_REPORT_MODE=high MOCK_CM_FIX_LARGE=true \
-  SECURITY_GATE_LARGE_FIX_LINES=10 \
-    run_hook "$AGENTS_DIR/security_gate_hook.sh" "$repo"
-  assert_eq "cm: oversized fix diff escalates + denies (no tty)" "deny" "$(decision "$repo")"
-  local vuln_status
-  vuln_status=$(cd "$repo" && git status --porcelain -- vuln.py)
-  assert_eq "cm: no dangling uncommitted fix left in vuln.py after escalation deny" "" "$vuln_status"
-  cleanup_repo "$repo"
-}
-
 test_cm_mixed_severity_fixes_blocking_logs_advisory() {
   local repo; repo=$(setup_repo)
-  SECURITY_GATE_SCANNER=codemender SECURITY_GATE_TEST_CMD=true MOCK_CM_REPORT_MODE=mixed \
+  # Turn 1: mixed findings -> low advisory, high denies
+  SECURITY_GATE_SCANNER=codemender MOCK_CM_REPORT_MODE=mixed \
     run_hook "$AGENTS_DIR/security_gate_hook.sh" "$repo"
-  assert_eq "cm: mixed severities still allow after fix" "allow" "$(decision "$repo")"
-  assert_contains "cm: mixed severities log FIXED" "$(log_events "$repo")" "FIXED"
-  assert_contains "cm: mixed severities log ADVISORY" "$(log_events "$repo")" "ADVISORY"
+  assert_eq "cm: mixed severities denies on high" "deny" "$(decision "$repo")"
+
+  # Turn 2: agent fixed high finding -> only low remains -> allows
+  SECURITY_GATE_SCANNER=codemender MOCK_CM_REPORT_MODE=low \
+    run_hook "$AGENTS_DIR/security_gate_hook.sh" "$repo"
+  assert_eq "cm: after fix only advisory remains -> allows" "allow" "$(decision "$repo")"
+  assert_contains "cm: fixed high finding logged as FIXED" "$(log_events "$repo")" "FIXED"
+  assert_contains "cm: low finding logged as ADVISORY" "$(log_events "$repo")" "ADVISORY"
   cleanup_repo "$repo"
 }
 
@@ -247,22 +268,27 @@ test_semgrep_advisory_low_severity_does_not_block() {
   cleanup_repo "$repo"
 }
 
-test_semgrep_blocking_high_severity_autofix_succeeds() {
+test_semgrep_blocking_high_severity_denies_and_prompts_agent() {
   local repo; repo=$(setup_repo)
-  SECURITY_GATE_SCANNER=semgrep SECURITY_GATE_TEST_CMD=true MOCK_SEMGREP_MODE=high MOCK_SEMGREP_AUTOFIX=true \
+  SECURITY_GATE_SCANNER=semgrep MOCK_SEMGREP_MODE=high \
     run_hook "$AGENTS_DIR/security_gate_hook.sh" "$repo"
-  assert_eq "semgrep: high severity autofix succeeds and allows" "allow" "$(decision "$repo")"
-  assert_contains "semgrep: autofix logged as FIXED" "$(log_events "$repo")" "FIXED"
+  assert_eq "semgrep: high severity blocks and prompts agent" "deny" "$(decision "$repo")"
+  assert_contains "semgrep: logged as DENIED_TO_AGENT" "$(log_events "$repo")" "DENIED_TO_AGENT"
   cleanup_repo "$repo"
 }
 
-test_pipeline_semgrep_autofix_to_codemender_success() {
+test_pipeline_semgrep_to_codemender_flow() {
   local repo; repo=$(setup_repo)
-  SECURITY_GATE_SCANNER=auto SECURITY_GATE_TEST_CMD=true MOCK_SEMGREP_MODE=high MOCK_SEMGREP_AUTOFIX=true \
-  MOCK_CM_REPORT_MODE=clean \
+  # Pipeline mode: Semgrep finds high issue -> exported to Stage 2 -> Stage 2 denies and prompts agent
+  SECURITY_GATE_SCANNER=auto MOCK_SEMGREP_MODE=high MOCK_CM_REPORT_MODE=clean \
     run_hook "$AGENTS_DIR/security_gate_hook.sh" "$repo"
-  assert_eq "pipeline: Stage 1 autofix + Stage 2 clean verify allows" "allow" "$(decision "$repo")"
-  assert_contains "pipeline: autofix logged as FIXED" "$(log_events "$repo")" "FIXED"
+  assert_eq "pipeline: Stage 1 finding exported to Stage 2 and prompts agent" "deny" "$(decision "$repo")"
+
+  # Turn 2: Agent fixes issue -> clean on both stages -> allows
+  SECURITY_GATE_SCANNER=auto MOCK_SEMGREP_MODE=clean MOCK_CM_REPORT_MODE=clean \
+    run_hook "$AGENTS_DIR/security_gate_hook.sh" "$repo"
+  assert_eq "pipeline: clean on both stages allows" "allow" "$(decision "$repo")"
+  assert_contains "pipeline: logged as FIXED" "$(log_events "$repo")" "FIXED"
   cleanup_repo "$repo"
 }
 
@@ -299,18 +325,18 @@ for t in \
   test_cm_error_blocks_by_default \
   test_cm_error_allow_on_error_true_tags_commit \
   test_cm_advisory_low_severity_does_not_block \
-  test_cm_blocking_high_severity_autofix_commits \
+  test_cm_blocking_high_severity_denies_and_prompts_agent \
+  test_cm_agent_resolves_finding_subsequent_push_allows \
   test_cm_blocking_retries_exhausted_cm_verify_clean_allows_with_advisory \
   test_cm_blocking_retries_exhausted_cm_verify_exploitable_fails_closed \
   test_cm_blocking_retries_exhausted_cm_verify_crash_fails_closed \
-  test_cm_large_fix_diff_escalates_not_autocommitted \
   test_cm_mixed_severity_fixes_blocking_logs_advisory \
   test_semgrep_pass_no_findings \
   test_semgrep_error_blocks_by_default \
   test_semgrep_error_allow_on_error_true \
   test_semgrep_advisory_low_severity_does_not_block \
-  test_semgrep_blocking_high_severity_autofix_succeeds \
-  test_pipeline_semgrep_autofix_to_codemender_success \
+  test_semgrep_blocking_high_severity_denies_and_prompts_agent \
+  test_pipeline_semgrep_to_codemender_flow \
   test_pipeline_deterministic_error_fail_open_proceeds_to_stage2 \
   test_pipeline_tools_missing_passes_smoothly \
 ; do
