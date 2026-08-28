@@ -27,5 +27,7 @@ Translate functional requirements and security criteria from `threat_model.md` a
    - **Exploit Payloads**: Assert dangerous inputs (SQLi, path traversal `../../`, XSS) are rejected cleanly.
 3. **Execute & Verify RED**:
    - Run the project's test command (e.g., `pytest`, `python3 -m unittest discover -s tests`).
-   - **Crucial**: Confirm the tests fail due to the expected missing feature logic/boundary assertion and NOT due to a syntax or import error.
+   - **Requirement**: Confirm the tests fail due to the expected missing feature logic/boundary assertion and not due to a syntax or import error.
+4. **Multi-Finding Handling**:
+   - When remediating multiple scanner findings, write and verify one boundary test for one finding at a time before proceeding to defensive implementation.
 

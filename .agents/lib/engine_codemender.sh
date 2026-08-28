@@ -196,11 +196,12 @@ run_codemender_gate() {
   # 5. STOP and return structured rejection to agent to trigger Secure TDD workflow
   local REJECTION_PROMPT="Security Gate blocked push ($ACTIONABLE_COUNT unresolved finding(s)).
 
-Action Required: Execute the Secure TDD Loop:
-1. Invoke 'security_test_writer' to author a failing boundary test in tests/ (assert RED).
-2. Invoke 'defensive_developer' to apply defensive sanitization, schemas, or parameterized queries (assert GREEN).
-3. Run the regression test suite ($SECURITY_GATE_TEST_CMD) to confirm all tests pass.
-4. Retry 'git push'.
+Action Required: Execute the Secure TDD Loop sequentially for each finding:
+For each finding below (one at a time):
+  1. Invoke 'security_test_writer' to author one failing boundary test in tests/ (assert RED).
+  2. Invoke 'defensive_developer' to apply the minimal defensive fix (assert GREEN).
+  3. Run the local test to confirm it passes before moving to the next finding.
+Once all findings are resolved, run the full regression test suite ($SECURITY_GATE_TEST_CMD) and retry 'git push'.
 
 Open Findings:${ACTIONABLE_SUMMARY}"
 

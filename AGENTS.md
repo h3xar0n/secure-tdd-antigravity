@@ -95,6 +95,13 @@ This framework unites functional engineering and security into a single test-fir
 - Append the rule to `CONTEXT.md` under `## 4. Continuous Evolution: Auto-Evolved Conventions` or update `SKILL.md` instructions.
 - All future agent sessions inherit these rules upfront.
 
+### Multi-Finding Sequential Remediation
+- When resolving multiple findings from a scan or gate rejection, process them sequentially one finding at a time:
+  1. Author one discrete boundary test for the finding (RED).
+  2. Implement the minimal defensive fix (GREEN).
+  3. Verify the local test passes before moving to the next finding.
+- Avoid batching multiple unrelated edits into a single unverified change. Full regression suites run after each individual finding is verified.
+
 ---
 
 ## 3. Tool Conventions & State Management

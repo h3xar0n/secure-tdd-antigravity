@@ -32,3 +32,10 @@ You MUST strictly follow this 4-phase cyclical workflow for all feature implemen
 5. **Continuous Evolution**:
    - If a new pattern, helper function, or architectural convention was introduced, invoke the **Skill Evolution Updater Skill** to document the lesson into `CONTEXT.md` or the appropriate `SKILL.md`.
 
+6. **Multi-Finding Remediation Protocol**:
+   - When resolving multiple findings from a scan or security gate rejection, iterate sequentially one finding at a time:
+     1. Author one discrete boundary test for the finding (RED).
+     2. Implement the minimal defensive fix (GREEN).
+     3. Verify local tests pass before moving to the next finding.
+   - Avoid applying multi-finding changes in a single unverified edit. Run the full regression test suite only after all individual findings have passed their discrete TDD cycle.
+

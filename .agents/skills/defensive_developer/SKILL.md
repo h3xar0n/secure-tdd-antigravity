@@ -28,4 +28,6 @@ Implement clean, modular production code that delivers the requested feature or 
 3. **Confirm GREEN State**:
    - Run the project test suite.
    - Verify that all functional and security tests pass cleanly without errors.
+4. **Multi-Finding Handling**:
+   - When remediating multiple scanner findings, apply the minimal fix for the current failing boundary test, confirm GREEN, then proceed to the next finding's test-fix cycle.
 
