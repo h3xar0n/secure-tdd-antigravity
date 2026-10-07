@@ -1,6 +1,6 @@
 ---
 name: skill-evolution-updater
-description: Extracts systemic conventions from resolved bugs, patterns, and refactors to update CONTEXT.md and agent skills (Continuous Evolution).
+description: "Extracts systemic conventions from resolved bugs, patterns, and refactors to update CONTEXT.md and agent skills (Continuous Evolution)."
 ---
 
 # Skill & Conventions Evolution Updater (Continuous Evolution)

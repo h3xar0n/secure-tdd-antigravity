@@ -1,6 +1,6 @@
 ---
 name: security-test-writer
-description: Authors test-first unit and integration tests covering functional behavior, edge cases, and security boundaries (Phase B: RED).
+description: "Authors test-first unit and integration tests covering functional behavior, edge cases, and security boundaries (Phase B - RED)."
 ---
 
 # QA & Security Test Writer Skill (Phase B: RED Phase)

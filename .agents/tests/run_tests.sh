@@ -326,10 +326,14 @@ test_skills_frontmatter_valid() {
     [ -f "$skill_md" ] || continue
     local folder_name
     folder_name=$(basename "$(dirname "$skill_md")")
+    local fm_block
+    fm_block=$(awk '/^---$/{c++; if (c==2) exit; next} c==1{print}' "$skill_md")
     local fm_name
-    fm_name=$(awk '/^---$/{f=!f; next} f && /^name:/{sub(/^name:[[:space:]]*/, ""); print; exit}' "$skill_md")
-    local fm_desc
-    fm_desc=$(awk '/^---$/{f=!f; next} f && /^description:/{sub(/^description:[[:space:]]*/, ""); print; exit}' "$skill_md")
+    fm_name=$(printf '%s
+' "$fm_block" | awk '/^name:/{sub(/^name:[[:space:]]*/, ""); gsub(/^"|"$/, ""); print; exit}')
+    local fm_desc_raw
+    fm_desc_raw=$(printf '%s
+' "$fm_block" | awk '/^description:/{sub(/^description:[[:space:]]*/, ""); print; exit}')
     if [[ ! "$fm_name" =~ ^[a-z0-9]+(-[a-z0-9]+)*$ ]]; then
       bad=1
       log_fail "skill frontmatter name [$fm_name] in $skill_md must be kebab-case"
@@ -338,12 +342,16 @@ test_skills_frontmatter_valid() {
       bad=1
       log_fail "skill frontmatter name [$fm_name] does not match directory [$folder_name]"
     fi
-    if [ -z "$fm_desc" ]; then
+    if [ -z "$fm_desc_raw" ]; then
       bad=1
       log_fail "skill frontmatter description missing in $skill_md"
     fi
+    if [[ ! "$fm_desc_raw" =~ ^".*"$ ]] && [[ "$fm_desc_raw" == *": "* ]]; then
+      bad=1
+      log_fail "skill frontmatter description in $skill_md contains unquoted ': ' (YAML mapping syntax error)"
+    fi
   done
-  assert_eq "skills: all SKILL.md files use valid kebab-case frontmatter" "0" "$bad"
+  assert_eq "skills: all SKILL.md files have valid YAML frontmatter and kebab-case names" "0" "$bad"
 }
 
 # --- run -----------------------------------------------------------------
