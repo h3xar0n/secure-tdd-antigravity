@@ -346,9 +346,9 @@ test_skills_frontmatter_valid() {
       bad=1
       log_fail "skill frontmatter description missing in $skill_md"
     fi
-    if [[ ! "$fm_desc_raw" =~ ^".*"$ ]] && [[ "$fm_desc_raw" == *": "* ]]; then
+    if [[ "$fm_desc_raw" == *": "* ]] || [[ "$fm_desc_raw" == *"("* ]] || [[ "$fm_desc_raw" == *")"* ]]; then
       bad=1
-      log_fail "skill frontmatter description in $skill_md contains unquoted ': ' (YAML mapping syntax error)"
+      log_fail "skill frontmatter description in $skill_md contains forbidden characters (colons or parentheses)"
     fi
   done
   assert_eq "skills: all SKILL.md files have valid YAML frontmatter and kebab-case names" "0" "$bad"

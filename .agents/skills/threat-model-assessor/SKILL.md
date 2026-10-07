@@ -1,6 +1,6 @@
 ---
 name: threat-model-assessor
-description: "Plans feature architecture, functional requirements, and evaluates STRIDE security boundaries (Phase A - Plan)."
+description: Plans feature architecture, functional requirements, and evaluates STRIDE security boundaries in Phase A Plan.
 ---
 
 # Planning, Requirements & Threat Model Assessor Skill (Phase A: Plan Phase)
