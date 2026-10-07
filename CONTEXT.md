@@ -59,7 +59,7 @@ Whenever implementing security-critical functionality, use the standardized proj
 
 ## 4. Continuous Evolution: Auto-Evolved Conventions
 
-> **Notice for Agents**: When you remediate a security issue or refactor code to use a new helper, invoke the `skill_evolution_updater` to append the new convention below so all future cycles inherit it.
+> **Notice for Agents**: When you remediate a security issue or refactor code to use a new helper, invoke the `skill-evolution-updater` to append the new convention below so all future cycles inherit it.
 
 - *Rule 2026-08-01*: Always use `resolve_safe_path` with an explicit base directory so that path traversal attempts (e.g., `../../etc/passwd`) raise a `ValueError`.
 - *Rule 2026-08-15*: For URL redirection, validate against the local server origin before issuing an HTTP 302 response.

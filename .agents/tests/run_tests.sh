@@ -318,6 +318,34 @@ test_pipeline_tools_missing_passes_smoothly() {
   cleanup_repo "$repo"
 }
 
+test_skills_frontmatter_valid() {
+  local skills_dir="$AGENTS_DIR/skills"
+  [ -d "$skills_dir" ] || return 0
+  local bad=0
+  for skill_md in "$skills_dir"/*/SKILL.md; do
+    [ -f "$skill_md" ] || continue
+    local folder_name
+    folder_name=$(basename "$(dirname "$skill_md")")
+    local fm_name
+    fm_name=$(awk '/^---$/{f=!f; next} f && /^name:/{sub(/^name:[[:space:]]*/, ""); print; exit}' "$skill_md")
+    local fm_desc
+    fm_desc=$(awk '/^---$/{f=!f; next} f && /^description:/{sub(/^description:[[:space:]]*/, ""); print; exit}' "$skill_md")
+    if [[ ! "$fm_name" =~ ^[a-z0-9]+(-[a-z0-9]+)*$ ]]; then
+      bad=1
+      log_fail "skill frontmatter name [$fm_name] in $skill_md must be kebab-case"
+    fi
+    if [ "$fm_name" != "$folder_name" ]; then
+      bad=1
+      log_fail "skill frontmatter name [$fm_name] does not match directory [$folder_name]"
+    fi
+    if [ -z "$fm_desc" ]; then
+      bad=1
+      log_fail "skill frontmatter description missing in $skill_md"
+    fi
+  done
+  assert_eq "skills: all SKILL.md files use valid kebab-case frontmatter" "0" "$bad"
+}
+
 # --- run -----------------------------------------------------------------
 
 for t in \
@@ -339,6 +367,7 @@ for t in \
   test_pipeline_semgrep_to_codemender_flow \
   test_pipeline_deterministic_error_fail_open_proceeds_to_stage2 \
   test_pipeline_tools_missing_passes_smoothly \
+  test_skills_frontmatter_valid \
 ; do
   echo "-- $t"
   "$t"

@@ -1,5 +1,5 @@
 ---
-name: history_context_seeder
+name: history-context-seeder
 description: Analyzes repository Git history for past bug fixes, architectural conventions, and security patterns to seed CONTEXT.md on onboarding.
 ---
 

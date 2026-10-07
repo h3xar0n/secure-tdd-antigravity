@@ -221,7 +221,7 @@ evolve_context_and_skills() {
     fi
   fi
 
-  echo "Continuous Evolution Suggestion: Consider updating relevant SKILL.md files (e.g. security_test_writer / defensive_developer) to encode $rule_desc." >&2
+  echo "Continuous Evolution Suggestion: Consider updating relevant SKILL.md files (e.g. security-test-writer / defensive-developer) to encode $rule_desc." >&2
 }
 
 read_lines_into_array() {

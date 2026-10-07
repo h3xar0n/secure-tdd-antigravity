@@ -141,8 +141,8 @@ run_semgrep_gate() {
 
 Action Required: Execute the Secure TDD Loop sequentially for each finding:
 For each finding below (one at a time):
-  1. Invoke 'security_test_writer' to author one failing boundary test in tests/ (assert RED).
-  2. Invoke 'defensive_developer' to apply the minimal defensive fix (assert GREEN).
+  1. Invoke 'security-test-writer' to author one failing boundary test in tests/ (assert RED).
+  2. Invoke 'defensive-developer' to apply the minimal defensive fix (assert GREEN).
   3. Run the local test to confirm it passes before moving to the next finding.
 Once all findings are resolved, run the full regression test suite ($SECURITY_GATE_TEST_CMD) and retry 'git push'.
 

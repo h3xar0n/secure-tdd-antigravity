@@ -1,5 +1,5 @@
 ---
-name: threat_model_assessor
+name: threat-model-assessor
 description: Plans feature architecture, functional requirements, and evaluates STRIDE security boundaries (Phase A: Plan).
 ---
 

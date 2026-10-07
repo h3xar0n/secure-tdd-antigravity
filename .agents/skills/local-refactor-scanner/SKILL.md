@@ -1,5 +1,5 @@
 ---
-name: local_refactor_scanner
+name: local-refactor-scanner
 description: Refactors code for quality and maintainability, executes full test suite regression passes, and runs local deterministic security/lint scans (Phase D: REFACTOR).
 ---
 
@@ -28,6 +28,6 @@ Refactor implementation for clean code structure, modularity, and maintainabilit
 2. Refactor code for clarity, maintainability, and helper reuse.
 3. Run local linters and security scanners on changed files.
 4. Run the full test suite to guarantee 100% passing tests.
-5. **Continuous Evolution**: Capture new conventions in `CONTEXT.md` and suggest/apply updates to `SKILL.md` instructions via `skill_evolution_updater` to permanently prevent recurrence of issues.
+5. **Continuous Evolution**: Capture new conventions in `CONTEXT.md` and suggest/apply updates to `SKILL.md` instructions via `skill-evolution-updater` to permanently prevent recurrence of issues.
 
 

@@ -55,14 +55,14 @@ This framework unites functional engineering and security into a single test-fir
 ```
 
 ### Phase A: Planning, Functional Scoping & Threat Modeling (Plan Phase)
-- **Skill**: `threat_model_assessor`
+- **Skill**: `threat-model-assessor`
 - Ingest `CONTEXT.md` to identify existing architecture, trust boundaries, and approved helpers.
 - Decompose the task into functional deliverables, user stories, and acceptance criteria.
 - Perform STRIDE assessment on the proposed change to identify trust boundaries and security constraints.
 - Generate or update `threat_model.md` at the workspace root, establishing both Functional and Security Acceptance Criteria.
 
 ### Phase B: Functional & Security Test-First Case Creation (Red Phase)
-- **Skill**: `security_test_writer`
+- **Skill**: `security-test-writer`
 - Author unit and integration tests asserting:
   1. *Functional Correctness*: Happy-path user journeys, business logic execution, expected outputs (e.g. HTTP 200/302).
   2. *Edge Cases & Error Handling*: Missing parameters, malformed payloads, out-of-boundary values.
@@ -74,7 +74,7 @@ This framework unites functional engineering and security into a single test-fir
 - Run the test suite and verify tests fail for the expected assertion reason (**RED**).
 
 ### Phase C: Clean & Defensive Implementation (Green Phase)
-- **Skill**: `defensive_developer`
+- **Skill**: `defensive-developer`
 - Author clean, modular, and maintainable production code to satisfy all failing tests and deliver the feature.
 - Adhere to the Three Defensive Pillars:
   1. *Strict input validation* (allow-lists, typed schemas with `pydantic`).
@@ -83,14 +83,14 @@ This framework unites functional engineering and security into a single test-fir
 - Run the test suite and confirm all tests pass cleanly (**GREEN**).
 
 ### Phase D: Local Refactoring, Quality & Scanning (Refactor Phase)
-- **Skill**: `local_refactor_scanner`
+- **Skill**: `local-refactor-scanner`
 - Clean up code, eliminate duplication, improve maintainability, and verify 100% passing regression tests.
 - Execute fast deterministic scans locally (secrets, dependencies, Semgrep / CodeMender).
 - Conduct a guided AI review to verify business logic, edge cases, and eliminate design flaws.
 - Keep diffs small, surgical, and focused on preserving baseline stability.
 
 ### Continuous Evolution: Updating Skills & Context
-- **Skill**: `skill_evolution_updater`
+- **Skill**: `skill-evolution-updater`
 - On resolving a tricky bug, establishing a new pattern, or introducing a helper, extract the systemic rule.
 - Append the rule to `CONTEXT.md` under `## 4. Continuous Evolution: Auto-Evolved Conventions` or update `SKILL.md` instructions.
 - All future agent sessions inherit these rules upfront.

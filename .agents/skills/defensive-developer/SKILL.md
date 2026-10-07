@@ -1,5 +1,5 @@
 ---
-name: defensive_developer
+name: defensive-developer
 description: Implements clean, maintainable production code to deliver features and satisfy functional and security test assertions (Phase C: GREEN).
 ---
 
